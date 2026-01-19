@@ -388,6 +388,17 @@ body.sqs-edit-mode-active [data-wm-plugin="horizontal-timeline"] .wm-timeline-sc
   width: var(--timeline-arrow-button-size, 60px);
   height: var(--timeline-arrow-button-size, 60px);
   transition: opacity 0.2s ease;
+  -webkit-tap-highlight-color: transparent;
+}
+
+[data-wm-plugin="horizontal-timeline"] .wm-timeline-arrow:focus {
+  outline: none;
+}
+
+[data-wm-plugin="horizontal-timeline"] .wm-timeline-arrow:focus-visible {
+  outline: 2px solid var(--timeline-fill-bg, var(--primaryButtonBackgroundColor));
+  outline-offset: 2px;
+  border-radius: 50%;
 }
 
 [data-wm-plugin="horizontal-timeline"] .wm-timeline-arrow:hover {
@@ -425,6 +436,10 @@ body.sqs-edit-mode-active [data-wm-plugin="horizontal-timeline"] .wm-timeline-sc
 
 /* Synchronized transitions */
 [data-wm-plugin="horizontal-timeline"][data-wm-navigation-type="arrows"] .wm-timeline-items-track {
+  transition: transform var(--timeline-arrow-duration, 0.4s) ease;
+}
+
+[data-wm-plugin="horizontal-timeline"][data-wm-navigation-type="arrows"] .wm-timeline-labels-track {
   transition: transform var(--timeline-arrow-duration, 0.4s) ease;
 }
 
