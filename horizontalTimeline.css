@@ -389,6 +389,7 @@ body.sqs-edit-mode-active [data-wm-plugin="horizontal-timeline"] .wm-timeline-sc
   height: var(--timeline-arrow-button-size, 60px);
   transition: opacity 0.2s ease;
   -webkit-tap-highlight-color: transparent;
+  touch-action: manipulation;
 }
 
 [data-wm-plugin="horizontal-timeline"] .wm-timeline-arrow:focus {
