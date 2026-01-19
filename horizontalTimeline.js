@@ -334,9 +334,9 @@ class WMHorizontalTimeline {
 
     // Description
     if (item.description && this.options.isBodyEnabled !== false) {
-      const description = document.createElement('p');
+      const description = document.createElement('div');
       description.className = 'wm-timeline-item-description';
-      description.textContent = item.description;
+      description.innerHTML = item.description;
       contentWrapper.appendChild(description);
     }
 
@@ -716,3 +716,4 @@ class WMHorizontalTimeline {
     });
   }
 })();
+
