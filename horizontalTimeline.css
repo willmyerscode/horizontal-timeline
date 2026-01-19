@@ -373,6 +373,7 @@ body.sqs-edit-mode-active [data-wm-plugin="horizontal-timeline"] .wm-timeline-sc
   align-items: center;
   gap: var(--timeline-arrow-gap, 20px);
   margin-top: var(--timeline-arrow-margin-top, 2rem);
+  touch-action: manipulation;
 }
 
 /* Arrow button - list section style */
