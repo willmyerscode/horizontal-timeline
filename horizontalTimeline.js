@@ -558,8 +558,21 @@ class WMHorizontalTimeline {
   bindEvents() {
     // Arrow navigation mode (works on desktop and horizontal mobile)
     if (this.settings.navigationType === 'arrows') {
-      this.prevButton?.addEventListener('click', () => this.goPrev());
-      this.nextButton?.addEventListener('click', () => this.goNext());
+      this.isAnimating = false;
+      const arrowDuration = 400; // matches --timeline-arrow-duration default
+      
+      this.prevButton?.addEventListener('click', () => {
+        if (this.isAnimating) return;
+        this.isAnimating = true;
+        this.goPrev();
+        setTimeout(() => { this.isAnimating = false; }, arrowDuration);
+      });
+      this.nextButton?.addEventListener('click', () => {
+        if (this.isAnimating) return;
+        this.isAnimating = true;
+        this.goNext();
+        setTimeout(() => { this.isAnimating = false; }, arrowDuration);
+      });
       
       requestAnimationFrame(() => this.goToIndex(0));
       
