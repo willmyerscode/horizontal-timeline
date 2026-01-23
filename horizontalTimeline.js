@@ -551,17 +551,16 @@ class WMHorizontalTimeline {
           this.labelsTrack.style.transform = `translateX(-${translateX}px)`;
         }
         
-        // Sync progress track with items track
+        // Sync progress track with items (scrolls off screen)
         progressTrack.style.width = `${trackScrollWidth}px`;
         progressTrack.style.transform = `translateX(-${translateX}px)`;
         
-        // Calculate progress fill to reach the center of the current dot
+        // Calculate progress fill to the dot position within the track
+        const dotCenter = itemOffset + (itemWidth / 2);
         let fillPercent;
         if (this.currentIndex === itemCount - 1) {
-          // Fill to end on last item
           fillPercent = 100;
         } else {
-          const dotCenter = itemOffset + (itemWidth / 2);
           fillPercent = (dotCenter / trackScrollWidth) * 100;
         }
         
@@ -769,3 +768,4 @@ class WMHorizontalTimeline {
     });
   }
 })();
+
