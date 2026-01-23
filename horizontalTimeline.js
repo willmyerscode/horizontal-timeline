@@ -769,4 +769,3 @@ class WMHorizontalTimeline {
     });
   }
 })();
-
