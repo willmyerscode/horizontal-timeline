@@ -18,6 +18,8 @@ class WMHorizontalTimeline {
       navigationType: 'scroll', // 'scroll' or 'arrows'
       itemCards: false, // enable inverted card styling
       mobileLayout: 'horizontal', // 'horizontal' or 'vertical'
+      arrowPlacement: 'side', // 'side', 'bottom', 'bottom-left', 'bottom-right'
+      arrowPlacementMobile: 'side', // 'side', 'bottom', 'bottom-left', 'bottom-right'
       ...settings
     };
     this.data = null;
@@ -62,6 +64,12 @@ class WMHorizontalTimeline {
     }
     if (this.settings.mobileLayout) {
       this.el.setAttribute('data-wm-mobile-layout', this.settings.mobileLayout);
+    }
+    if (this.settings.arrowPlacement) {
+      this.el.setAttribute('data-wm-arrow-placement', this.settings.arrowPlacement);
+    }
+    if (this.settings.arrowPlacementMobile) {
+      this.el.setAttribute('data-wm-arrow-placement-mobile', this.settings.arrowPlacementMobile);
     }
   }
 
@@ -122,8 +130,11 @@ class WMHorizontalTimeline {
   buildLayout() {
     if (!this.data || this.data.length === 0) return;
 
-    const contentWrapper = this.el.querySelector('.content-wrapper');
-    if (!contentWrapper) return;
+    // Find the user-items-list to insert the plugin as a sibling
+    const userItemsList = this.el.querySelector('.user-items-list');
+    if (!userItemsList || !userItemsList.parentElement) return;
+
+    const contentElement = userItemsList.parentElement;
 
     // Create the scroll spacer for sticky behavior
     const scrollSpacer = document.createElement('div');
@@ -259,7 +270,9 @@ class WMHorizontalTimeline {
 
     stickyWrapper.appendChild(this.timelineWrapper);
     scrollSpacer.appendChild(stickyWrapper);
-    contentWrapper.appendChild(scrollSpacer);
+    
+    // Insert as sibling to user-items-list (after it)
+    userItemsList.insertAdjacentElement('afterend', scrollSpacer);
   }
 
   buildTimelineItem(item, index) {
@@ -448,34 +461,52 @@ class WMHorizontalTimeline {
       this.progressFill.style.height = '100%';
 
       const itemsContainer = this.el.querySelector('.wm-timeline-items-container');
+      const progressTrack = this.el.querySelector('.wm-timeline-progress-track');
+      const timelineContent = this.el.querySelector('.wm-timeline-content');
+      
       if (itemsContainer && this.itemsTrack) {
         const containerWidth = itemsContainer.offsetWidth;
         const trackWidth = this.itemsTrack.scrollWidth;
-        const maxTranslate = Math.max(0, trackWidth - containerWidth);
+        
+        // Get the content padding to inset the end position
+        const contentPadding = timelineContent 
+          ? parseFloat(getComputedStyle(timelineContent).paddingLeft) || 0 
+          : 0;
+        
+        const maxTranslate = Math.max(0, trackWidth - containerWidth + contentPadding);
         const translateX = progress * maxTranslate;
         this.itemsTrack.style.transform = `translateX(-${translateX}px)`;
         
         if (this.labelsTrack) {
           this.labelsTrack.style.transform = `translateX(-${translateX}px)`;
         }
+        
+        // Sync progress track with items track
+        if (progressTrack) {
+          progressTrack.style.width = `${trackWidth}px`;
+          progressTrack.style.transform = `translateX(-${translateX}px)`;
+        }
       }
 
-      const progressContainer = this.el.querySelector('.wm-timeline-progress-container');
-      const progressRect = progressContainer ? progressContainer.getBoundingClientRect() : null;
-      
-      if (progressRect) {
-        const progressBarLeft = progressRect.left;
-        const progressFillWidth = progress * progressRect.width;
-        const progressFillRight = progressBarLeft + progressFillWidth;
-
+      // Fill dots based on progress - calculate actual dot positions relative to track
+      if (this.itemsTrack) {
+        const trackWidth = this.itemsTrack.scrollWidth;
+        const progressFillWidth = progress * trackWidth;
+        
         this.dots.forEach((dot) => {
-          const dotRect = dot.getBoundingClientRect();
-          const dotCenter = dotRect.left + (dotRect.width / 2);
-          
-          if (progressFillRight >= dotCenter) {
-            dot.classList.add('wm-timeline-dot--filled');
-          } else {
-            dot.classList.remove('wm-timeline-dot--filled');
+          // Get the dot's center position within the items track
+          const item = dot.closest('.wm-timeline-item');
+          if (item) {
+            const itemLeft = item.offsetLeft;
+            const itemWidth = item.offsetWidth;
+            // Dot is centered in the item
+            const dotCenter = itemLeft + (itemWidth / 2);
+            
+            if (progressFillWidth >= dotCenter) {
+              dot.classList.add('wm-timeline-dot--filled');
+            } else {
+              dot.classList.remove('wm-timeline-dot--filled');
+            }
           }
         });
       }
@@ -491,6 +522,7 @@ class WMHorizontalTimeline {
     
     const itemsContainer = this.el.querySelector('.wm-timeline-items-container');
     const progressTrack = this.el.querySelector('.wm-timeline-progress-track');
+    const timelineContent = this.el.querySelector('.wm-timeline-content');
     const items = this.itemsTrack ? this.itemsTrack.querySelectorAll('.wm-timeline-item') : [];
     
     if (itemsContainer && this.itemsTrack && items.length > 0 && progressTrack) {
@@ -498,12 +530,17 @@ class WMHorizontalTimeline {
       const currentItem = items[this.currentIndex];
       const currentDot = this.dots[this.currentIndex];
       
+      // Get the content padding to inset the end position
+      const contentPadding = timelineContent 
+        ? parseFloat(getComputedStyle(timelineContent).paddingLeft) || 0 
+        : 0;
+      
       if (currentItem && currentDot) {
         const itemOffset = currentItem.offsetLeft;
         const itemWidth = currentItem.offsetWidth;
         const targetTranslate = Math.max(0, itemOffset - (containerWidth / 2) + (itemWidth / 2));
         const trackScrollWidth = this.itemsTrack.scrollWidth;
-        const maxTranslate = Math.max(0, trackScrollWidth - containerWidth);
+        const maxTranslate = Math.max(0, trackScrollWidth - containerWidth + contentPadding);
         const translateX = Math.min(targetTranslate, maxTranslate);
         
         // Move items
@@ -514,22 +551,25 @@ class WMHorizontalTimeline {
           this.labelsTrack.style.transform = `translateX(-${translateX}px)`;
         }
         
-        // Calculate progress fill to the dot position
-        const itemCenter = itemOffset + (itemWidth / 2);
-        const dotPositionAfterTranslate = itemCenter - translateX;
-        const progressTrackWidth = progressTrack.offsetWidth;
-        let fillPercent = Math.min(100, Math.max(0, (dotPositionAfterTranslate / progressTrackWidth) * 100));
+        // Sync progress track with items track
+        progressTrack.style.width = `${trackScrollWidth}px`;
+        progressTrack.style.transform = `translateX(-${translateX}px)`;
         
-        // Fill to end on last item
+        // Calculate progress fill to reach the center of the current dot
+        let fillPercent;
         if (this.currentIndex === itemCount - 1) {
+          // Fill to end on last item
           fillPercent = 100;
+        } else {
+          const dotCenter = itemOffset + (itemWidth / 2);
+          fillPercent = (dotCenter / trackScrollWidth) * 100;
         }
         
         this.progressFill.style.width = `${fillPercent}%`;
       }
     }
     
-    // Update dots
+    // Update dots based on current index
     this.dots.forEach((dot, i) => {
       dot.classList.toggle('wm-timeline-dot--filled', i <= this.currentIndex);
     });
