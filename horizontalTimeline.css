@@ -10,7 +10,9 @@
  * --timeline-dot-spacing: 26px;              (space between dot and item content)
  * --timeline-section-title-margin: 6vmax;    (margin below section title)
  * --timeline-section-button-margin: 6vmax;   (margin above section button)
- * --timeline-content-padding: var(--sqs-site-gutter);
+ * --timeline-content-padding: var(--sqs-site-gutter);  (left padding / horizontal)
+ * --timeline-content-padding-top: var(--sqs-site-gutter);
+ * --timeline-content-padding-bottom: var(--sqs-site-gutter);
  * 
  * Progress Bar & Track:
  * --timeline-track-height: 6px;
@@ -143,8 +145,8 @@ body.sqs-edit-mode-active [data-wm-plugin="horizontal-timeline"] .wm-timeline-sc
 
 [data-wm-plugin="horizontal-timeline"] .wm-timeline-content {
   width: 100%;
-  padding-top: var(--timeline-content-padding, var(--sqs-site-gutter, 4vw));
-  padding-bottom: var(--timeline-content-padding, var(--sqs-site-gutter, 4vw));
+  padding-top: var(--timeline-content-padding-top, var(--sqs-site-gutter, 4vw));
+  padding-bottom: var(--timeline-content-padding-bottom, var(--sqs-site-gutter, 4vw));
   padding-left: var(--timeline-content-padding, var(--sqs-site-gutter, 4vw));
   padding-right: 0;
   box-sizing: border-box;
@@ -160,6 +162,7 @@ body.sqs-edit-mode-active [data-wm-plugin="horizontal-timeline"] .wm-timeline-sc
   margin-bottom: var(--timeline-section-title-margin, 6vmax);
   color: var(--timeline-section-title-color, var(--headingLargeColor));
   font-size: var(--timeline-section-title-size, inherit);
+  transform: translateX(calc(-0.5 * var(--timeline-content-padding, var(--sqs-site-gutter, 4vw))));
 }
 
 [data-wm-plugin="horizontal-timeline"] .wm-timeline-section-title p {
@@ -374,6 +377,7 @@ body.sqs-edit-mode-active [data-wm-plugin="horizontal-timeline"] .wm-timeline-sc
 [data-wm-plugin="horizontal-timeline"] .wm-timeline-section-button {
   text-align: center;
   margin-top: var(--timeline-section-button-margin, 6vmax);
+  transform: translateX(calc(-0.5 * var(--timeline-content-padding, var(--sqs-site-gutter, 4vw))));
 }
 
 [data-wm-plugin="horizontal-timeline"] .wm-timeline-section-button .wm-timeline-button {
@@ -402,6 +406,7 @@ body.sqs-edit-mode-active [data-wm-plugin="horizontal-timeline"] .wm-timeline-sc
   align-items: center;
   gap: var(--timeline-arrow-gap, 20px);
   margin-top: var(--timeline-arrow-margin-top, 2rem);
+  transform: translateX(calc(-0.5 * var(--timeline-content-padding, var(--sqs-site-gutter, 4vw))));
 }
 
 /* Arrow button - list section style */
