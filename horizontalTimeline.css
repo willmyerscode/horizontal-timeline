@@ -15,14 +15,14 @@
  * Progress Bar & Track:
  * --timeline-track-height: 6px;
  * --timeline-track-border-radius: 22px;
- * --timeline-track-bg: rgba(128, 128, 128, 0.2);
+ * --timeline-track-opacity: 0.2;
  * --timeline-fill-bg: var(--primaryButtonBackgroundColor);
  * 
  * Dots:
  * --timeline-dot-size: 16px;
  * --timeline-dot-bg: var(--siteBackgroundColor);
  * --timeline-dot-border-width: 3px;
- * --timeline-dot-border-color: rgba(128, 128, 128, 0.3);
+ * --timeline-dot-border-opacity: 0.2;
  * --timeline-dot-filled-bg: var(--primaryButtonBackgroundColor);
  * --timeline-dot-filled-border-color: var(--primaryButtonBackgroundColor);
  * --timeline-dot-transition: 0.3s ease;
@@ -94,6 +94,10 @@
    HIDE ORIGINAL LIST SECTION
    ================================ */
 
+[data-wm-plugin="horizontal-timeline"] {
+  overflow-x: clip;
+}
+
 [data-wm-plugin="horizontal-timeline"] .user-items-list {
   display: none !important;
 }
@@ -139,7 +143,10 @@ body.sqs-edit-mode-active [data-wm-plugin="horizontal-timeline"] .wm-timeline-sc
 
 [data-wm-plugin="horizontal-timeline"] .wm-timeline-content {
   width: 100%;
-  padding: var(--timeline-content-padding, var(--sqs-site-gutter, 4vw));
+  padding-top: var(--timeline-content-padding, var(--sqs-site-gutter, 4vw));
+  padding-bottom: var(--timeline-content-padding, var(--sqs-site-gutter, 4vw));
+  padding-left: var(--timeline-content-padding, var(--sqs-site-gutter, 4vw));
+  padding-right: 0;
   box-sizing: border-box;
 }
 
@@ -164,7 +171,7 @@ body.sqs-edit-mode-active [data-wm-plugin="horizontal-timeline"] .wm-timeline-sc
 
 [data-wm-plugin="horizontal-timeline"] .wm-timeline-labels-container {
   width: 100%;
-  overflow: hidden;
+  overflow: visible;
   margin-bottom: var(--timeline-label-spacing, var(--timeline-dot-spacing, 26px));
 }
 
@@ -201,17 +208,27 @@ body.sqs-edit-mode-active [data-wm-plugin="horizontal-timeline"] .wm-timeline-sc
 [data-wm-plugin="horizontal-timeline"] .wm-timeline-progress-container {
   position: relative;
   width: 100%;
+  overflow: visible;
   z-index: 1;
 }
 
 [data-wm-plugin="horizontal-timeline"] .wm-timeline-progress-track {
-  width: 100%;
+  position: relative;
   height: var(--timeline-track-height, 6px);
-  background: var(--timeline-track-bg, rgba(128, 128, 128, 0.2));
   border-radius: var(--timeline-track-border-radius, 22px);
   overflow: hidden;
-  position: relative;
   z-index: 1;
+  transition: transform var(--timeline-transition-duration, 0.1s) ease-out;
+  will-change: transform;
+}
+
+[data-wm-plugin="horizontal-timeline"] .wm-timeline-progress-track::before {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: var(--timeline-fill-bg, var(--primaryButtonBackgroundColor, #000));
+  opacity: var(--timeline-track-opacity, 0.2);
+  border-radius: inherit;
 }
 
 [data-wm-plugin="horizontal-timeline"] .wm-timeline-progress-fill {
@@ -231,9 +248,7 @@ body.sqs-edit-mode-active [data-wm-plugin="horizontal-timeline"] .wm-timeline-sc
   height: var(--timeline-dot-size, 16px);
   border-radius: 50%;
   background: var(--timeline-dot-bg, var(--siteBackgroundColor, #fff));
-  border: var(--timeline-dot-border-width, 3px) solid var(--timeline-dot-border-color, rgba(128, 128, 128, 0.3));
-  transition: background var(--timeline-dot-transition, 0.3s ease), 
-              border-color var(--timeline-dot-transition, 0.3s ease);
+  border: var(--timeline-dot-border-width, 3px) solid transparent;
   box-sizing: border-box;
   flex-shrink: 0;
   margin: 0 auto var(--timeline-dot-spacing, 26px) auto;
@@ -241,9 +256,22 @@ body.sqs-edit-mode-active [data-wm-plugin="horizontal-timeline"] .wm-timeline-sc
   z-index: 2;
 }
 
+[data-wm-plugin="horizontal-timeline"] .wm-timeline-dot::before {
+  content: '';
+  position: absolute;
+  inset: calc(-1 * var(--timeline-dot-border-width, 3px));
+  border-radius: 50%;
+  border: var(--timeline-dot-border-width, 3px) solid var(--timeline-fill-bg, var(--primaryButtonBackgroundColor, #000));
+  opacity: var(--timeline-dot-border-opacity, 0.2);
+  transition: opacity var(--timeline-dot-transition, 0.3s ease);
+}
+
 [data-wm-plugin="horizontal-timeline"] .wm-timeline-dot--filled {
   background: var(--timeline-dot-filled-bg, var(--primaryButtonBackgroundColor, #000));
-  border-color: var(--timeline-dot-filled-border-color, var(--primaryButtonBackgroundColor, #000));
+}
+
+[data-wm-plugin="horizontal-timeline"] .wm-timeline-dot--filled::before {
+  opacity: 1;
 }
 
 /* ================================
@@ -252,7 +280,7 @@ body.sqs-edit-mode-active [data-wm-plugin="horizontal-timeline"] .wm-timeline-sc
 
 [data-wm-plugin="horizontal-timeline"] .wm-timeline-items-container {
   width: 100%;
-  overflow: hidden;
+  overflow: visible;
   /* Pull items up so dot centers align with progress track center */
   /* Offset = track_height/2 + dot_size/2 to reach center of track from bottom of progress container */
   margin-top: calc(-1 * (var(--timeline-track-height, 6px) / 2 + var(--timeline-dot-size, 16px) / 2));
@@ -444,6 +472,10 @@ body.sqs-edit-mode-active [data-wm-plugin="horizontal-timeline"] .wm-timeline-sc
   transition: transform var(--timeline-arrow-duration, 0.4s) ease;
 }
 
+[data-wm-plugin="horizontal-timeline"][data-wm-navigation-type="arrows"] .wm-timeline-progress-track {
+  transition: transform var(--timeline-arrow-duration, 0.4s) ease;
+}
+
 [data-wm-plugin="horizontal-timeline"][data-wm-navigation-type="arrows"] .wm-timeline-progress-fill {
   transition: width var(--timeline-arrow-duration, 0.4s) ease;
 }
@@ -490,9 +522,9 @@ body.sqs-edit-mode-active [data-wm-plugin="horizontal-timeline"] .wm-timeline-sc
     overflow-x: hidden;
   }
 
-  /* Hide content element */
-  [data-wm-plugin="horizontal-timeline"][data-wm-mobile-layout="vertical"] .content {
-    display: none;
+  /* Hide original list content */
+  [data-wm-plugin="horizontal-timeline"][data-wm-mobile-layout="vertical"] .user-items-list {
+    display: none !important;
   }
 
   [data-wm-plugin="horizontal-timeline"][data-wm-mobile-layout="vertical"] .wm-timeline-scroll-spacer {
@@ -506,6 +538,7 @@ body.sqs-edit-mode-active [data-wm-plugin="horizontal-timeline"] .wm-timeline-sc
 
   [data-wm-plugin="horizontal-timeline"][data-wm-mobile-layout="vertical"] .wm-timeline-content {
     display: block;
+    padding: var(--timeline-content-padding, var(--sqs-site-gutter, 4vw));
   }
 
   [data-wm-plugin="horizontal-timeline"][data-wm-mobile-layout="vertical"] .wm-timeline-labels-container {
@@ -526,9 +559,10 @@ body.sqs-edit-mode-active [data-wm-plugin="horizontal-timeline"] .wm-timeline-sc
   }
 
   [data-wm-plugin="horizontal-timeline"][data-wm-mobile-layout="vertical"] .wm-timeline-progress-track {
-    width: 100%;
+    width: 100% !important;
     height: 100%;
     flex: 1;
+    transform: none !important;
   }
 
   [data-wm-plugin="horizontal-timeline"][data-wm-mobile-layout="vertical"] .wm-timeline-progress-fill {
