@@ -110,6 +110,14 @@ class WMHorizontalTimeline {
     return txt.value;
   }
 
+  // Plain-text version of an HTML string (used for accessible names)
+  getPlainText(html) {
+    if (!html) return '';
+    const temp = document.createElement('div');
+    temp.innerHTML = this.decodeHtml(html);
+    return (temp.textContent || '').replace(/\s+/g, ' ').trim();
+  }
+
   sanitizeTitleHtml(html) {
     if (!html) return '';
     // Decode HTML entities
@@ -171,22 +179,31 @@ class WMHorizontalTimeline {
     }
 
     // Timeline area wrapper (contains progress bar and items)
+    // Expose as an accessible carousel region so AT can navigate the slides.
     const timelineArea = document.createElement('div');
     timelineArea.className = 'wm-timeline-area';
+    timelineArea.setAttribute('role', 'group');
+    timelineArea.setAttribute('aria-roledescription', 'carousel');
+    timelineArea.setAttribute('aria-label', this.getPlainText(this.sectionTitle) || 'Timeline');
 
-    // Build labels track above progress bar
+    // Build labels track above progress bar.
+    // This is a visual-only duplicate of the per-item labels (which live inside
+    // each slide for the correct reading order), so hide it from assistive tech.
     const labelsContainer = document.createElement('div');
     labelsContainer.className = 'wm-timeline-labels-container';
-    
+    labelsContainer.setAttribute('aria-hidden', 'true');
+
     this.labelsTrack = document.createElement('div');
     this.labelsTrack.className = 'wm-timeline-labels-track';
-    
+
     labelsContainer.appendChild(this.labelsTrack);
     timelineArea.appendChild(labelsContainer);
 
     // Build progress bar container (just the track, dots move with items)
+    // Purely decorative scroll-progress indicator.
     const progressContainer = document.createElement('div');
     progressContainer.className = 'wm-timeline-progress-container';
+    progressContainer.setAttribute('aria-hidden', 'true');
 
     const progressTrack = document.createElement('div');
     progressTrack.className = 'wm-timeline-progress-track';
@@ -279,6 +296,8 @@ class WMHorizontalTimeline {
     const itemWrapper = document.createElement('div');
     itemWrapper.className = 'wm-timeline-item';
     itemWrapper.dataset.index = index;
+    itemWrapper.setAttribute('role', 'group');
+    itemWrapper.setAttribute('aria-roledescription', 'slide');
 
     // Extract label from title if enclosed in []
     let titleText = item.title || '';
@@ -288,6 +307,12 @@ class WMHorizontalTimeline {
       labelText = labelMatch[1];
       titleText = titleText.replace(/\s*\[[^\]]+\]\s*/, ' ').trim();
     }
+
+    // Accessible name for the slide. Lead with the label (e.g. the year) when
+    // present so AT announces it as you move slide-to-slide and when reading the
+    // slide, then the position. This is the only place the label is exposed to AT.
+    const slidePosition = `${index + 1} of ${this.data.length}`;
+    itemWrapper.setAttribute('aria-label', labelText ? `${labelText}, ${slidePosition}` : slidePosition);
 
     // Create label wrapper for labels track (always create for alignment)
     const labelWrapper = document.createElement('div');
@@ -301,18 +326,21 @@ class WMHorizontalTimeline {
       labelWrapper.appendChild(label);
     }
 
-    // Inline label for vertical mobile layout
+    // Inline label for vertical mobile layout (visual only - the year is exposed
+    // to assistive tech through the slide's accessible name above).
     if (labelText) {
       const inlineLabel = document.createElement('p');
       inlineLabel.className = 'wm-timeline-item-label-inline';
       inlineLabel.textContent = labelText;
+      inlineLabel.setAttribute('aria-hidden', 'true');
       itemWrapper.appendChild(inlineLabel);
     }
 
-    // Dot (moves with item)
+    // Dot (moves with item) - decorative
     const dot = document.createElement('div');
     dot.className = 'wm-timeline-dot';
     dot.dataset.index = index;
+    dot.setAttribute('aria-hidden', 'true');
     itemWrapper.appendChild(dot);
 
     // Image
@@ -322,7 +350,7 @@ class WMHorizontalTimeline {
       
       const img = document.createElement('img');
       img.src = `${item.image.assetUrl}?format=750w`;
-      img.alt = item.title || '';
+      img.alt = titleText || '';
       img.loading = 'lazy';
       
       const focalX = item.image.mediaFocalPoint?.x ?? 0.5;
@@ -590,11 +618,108 @@ class WMHorizontalTimeline {
 
   updateArrowStates() {
     if (!this.prevButton || !this.nextButton) return;
-    this.prevButton.classList.toggle('wm-timeline-arrow--disabled', this.currentIndex === 0);
-    this.nextButton.classList.toggle('wm-timeline-arrow--disabled', this.currentIndex >= this.data.length - 1);
+    const atStart = this.currentIndex === 0;
+    const atEnd = this.currentIndex >= this.data.length - 1;
+    this.prevButton.classList.toggle('wm-timeline-arrow--disabled', atStart);
+    this.nextButton.classList.toggle('wm-timeline-arrow--disabled', atEnd);
+    // Reflect state to assistive tech while keeping the buttons focusable so
+    // keyboard users can still discover the start/end of the carousel.
+    this.prevButton.setAttribute('aria-disabled', atStart ? 'true' : 'false');
+    this.nextButton.setAttribute('aria-disabled', atEnd ? 'true' : 'false');
+  }
+
+  // Scroll the page so that the given item is brought into view (scroll mode).
+  // Used so that keyboard focus landing on an off-screen card reveals it.
+  scrollToIndex(index) {
+    if (!this.data || this.data.length === 0) return;
+
+    const isMobile = window.innerWidth <= 767;
+    const isVertical = isMobile && this.settings.mobileLayout === 'vertical';
+    // Vertical layout is in normal document flow; the browser reveals focus itself.
+    if (isVertical) return;
+
+    const scrollSpacer = this.el.querySelector('.wm-timeline-scroll-spacer');
+    const itemsContainer = this.el.querySelector('.wm-timeline-items-container');
+    const stickyWrapper = this.el.querySelector('.wm-timeline-sticky-wrapper');
+    const timelineContent = this.el.querySelector('.wm-timeline-content');
+    if (!scrollSpacer || !itemsContainer || !this.itemsTrack) return;
+
+    const items = this.itemsTrack.querySelectorAll('.wm-timeline-item');
+    const item = items[index];
+    if (!item) return;
+
+    const containerWidth = itemsContainer.offsetWidth;
+    const trackWidth = this.itemsTrack.scrollWidth;
+    const contentPadding = timelineContent
+      ? parseFloat(getComputedStyle(timelineContent).paddingLeft) || 0
+      : 0;
+    const maxTranslate = Math.max(0, trackWidth - containerWidth + contentPadding);
+    if (maxTranslate === 0) return;
+
+    // Target the same centered translate that arrow navigation uses, then map
+    // that back to the page scroll position that produces it.
+    const targetTranslate = Math.min(
+      Math.max(0, item.offsetLeft - (containerWidth / 2) + (item.offsetWidth / 2)),
+      maxTranslate
+    );
+    const progress = targetTranslate / maxTranslate;
+
+    const contentHeight = stickyWrapper ? stickyWrapper.offsetHeight : window.innerHeight;
+    const scrollRange = this.scrollHeight - contentHeight;
+    if (scrollRange <= 0) return;
+
+    const rect = scrollSpacer.getBoundingClientRect();
+    const spacerTopAbsolute = window.scrollY + rect.top;
+    const targetScrollY = spacerTopAbsolute + (progress * scrollRange);
+
+    window.scrollTo(0, targetScrollY);
+  }
+
+  // Keyboard navigation for arrow mode (attached to the arrow controls).
+  handleArrowKeydown(e) {
+    if (!this.data || this.data.length === 0) return;
+    const isVertical = window.innerWidth <= 767 && this.settings.mobileLayout === 'vertical';
+    // Vertical mobile layout hides the arrows and scrolls natively.
+    if (isVertical) return;
+
+    let handled = true;
+    switch (e.key) {
+      case 'ArrowRight':
+      case 'ArrowDown':
+        this.goNext();
+        break;
+      case 'ArrowLeft':
+      case 'ArrowUp':
+        this.goPrev();
+        break;
+      case 'Home':
+        this.goToIndex(0);
+        break;
+      case 'End':
+        this.goToIndex(this.data.length - 1);
+        break;
+      default:
+        handled = false;
+    }
+    if (handled) e.preventDefault();
   }
 
   bindEvents() {
+    // Reveal a card when keyboard focus enters it. Fixes focus landing on a
+    // card that is translated off-screen (works in both scroll and arrow modes).
+    this.boundHandleFocusIn = (e) => {
+      const item = e.target.closest('.wm-timeline-item');
+      if (!item || !this.itemsTrack || !this.itemsTrack.contains(item)) return;
+      const index = parseInt(item.dataset.index, 10);
+      if (Number.isNaN(index)) return;
+      if (this.settings.navigationType === 'arrows') {
+        this.goToIndex(index);
+      } else {
+        this.scrollToIndex(index);
+      }
+    };
+    this.el.addEventListener('focusin', this.boundHandleFocusIn);
+
     // Arrow navigation mode (works on desktop and horizontal mobile)
     if (this.settings.navigationType === 'arrows') {
       this.isAnimating = false;
@@ -612,7 +737,14 @@ class WMHorizontalTimeline {
         this.goNext();
         setTimeout(() => { this.isAnimating = false; }, arrowDuration);
       });
-      
+
+      // Arrow keys / Home / End navigate the carousel when an arrow is focused.
+      this.boundHandleKeydown = (e) => this.handleArrowKeydown(e);
+      const arrowsWrapper = this.el.querySelector('.wm-timeline-arrows');
+      if (arrowsWrapper) {
+        arrowsWrapper.addEventListener('keydown', this.boundHandleKeydown);
+      }
+
       requestAnimationFrame(() => this.goToIndex(0));
       
       // For arrow mode, only need resize handler (unless vertical mobile)
@@ -706,6 +838,9 @@ class WMHorizontalTimeline {
     }
     if (this.boundHandleResize) {
       window.removeEventListener('resize', this.boundHandleResize);
+    }
+    if (this.boundHandleFocusIn) {
+      this.el.removeEventListener('focusin', this.boundHandleFocusIn);
     }
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
