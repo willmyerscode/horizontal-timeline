@@ -329,7 +329,8 @@ body.sqs-edit-mode-active [data-wm-plugin="horizontal-timeline"] .wm-timeline-sc
   text-align: center;
 }
 
-/* Inline label (hidden by default) */
+/* Inline label: visual-only, shown in the vertical mobile layout. The year is
+   exposed to assistive tech via each slide's accessible name, not this element. */
 [data-wm-plugin="horizontal-timeline"] .wm-timeline-item-label-inline {
   display: none;
 }
@@ -652,4 +653,21 @@ body.sqs-edit-mode-active [data-wm-plugin="horizontal-timeline"] .wm-timeline-sc
 [data-wm-plugin="horizontal-timeline"][data-section-theme="black"] .wm-timeline-sticky-wrapper,
 [data-wm-plugin="horizontal-timeline"][data-section-theme="black-bold"] .wm-timeline-sticky-wrapper {
   background-color: var(--black);
+}
+
+/* ================================
+   REDUCED MOTION
+   ================================ */
+
+/* Honour the visitor's motion preference: drop the sliding/filling transitions
+   so navigation and scroll updates are instant rather than animated. */
+@media (prefers-reduced-motion: reduce) {
+  [data-wm-plugin="horizontal-timeline"] .wm-timeline-items-track,
+  [data-wm-plugin="horizontal-timeline"] .wm-timeline-labels-track,
+  [data-wm-plugin="horizontal-timeline"] .wm-timeline-progress-track,
+  [data-wm-plugin="horizontal-timeline"] .wm-timeline-progress-fill,
+  [data-wm-plugin="horizontal-timeline"] .wm-timeline-dot,
+  [data-wm-plugin="horizontal-timeline"] .wm-timeline-dot::before {
+    transition: none !important;
+  }
 }
