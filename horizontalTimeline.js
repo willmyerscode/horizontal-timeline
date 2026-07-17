@@ -18,8 +18,8 @@ class WMHorizontalTimeline {
       navigationType: 'scroll', // 'scroll' or 'arrows'
       itemCards: false, // enable inverted card styling
       mobileLayout: 'horizontal', // 'horizontal' or 'vertical'
-      arrowPlacement: 'side', // 'side', 'bottom', 'bottom-left', 'bottom-right'
-      arrowPlacementMobile: 'side', // 'side', 'bottom', 'bottom-left', 'bottom-right'
+      arrowPlacement: 'bottom', // 'side', 'bottom', 'bottom-left', 'bottom-right'
+      arrowPlacementMobile: 'bottom', // 'side', 'bottom', 'bottom-left', 'bottom-right'
       ...settings
     };
     this.data = null;
