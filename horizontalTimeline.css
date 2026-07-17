@@ -470,6 +470,44 @@ body.sqs-edit-mode-active [data-wm-plugin="horizontal-timeline"] .wm-timeline-sc
   fill: none;
 }
 
+/* ================================
+   ARROW PLACEMENT (DESKTOP)
+   ================================ */
+
+/* Bottom row alignment variants */
+[data-wm-plugin="horizontal-timeline"][data-wm-arrow-placement="bottom-left"] .wm-timeline-arrows {
+  justify-content: flex-start;
+}
+
+[data-wm-plugin="horizontal-timeline"][data-wm-arrow-placement="bottom-right"] .wm-timeline-arrows {
+  justify-content: flex-end;
+}
+
+/* Side placement: arrows sit at the left/right edges, vertically centred over
+   the timeline area instead of in a row beneath it. */
+[data-wm-plugin="horizontal-timeline"][data-wm-arrow-placement="side"] .wm-timeline-arrows {
+  position: absolute;
+  inset: 0;
+  margin-top: 0;
+  transform: none;
+  justify-content: space-between;
+  align-items: center;
+  pointer-events: none;
+  z-index: 3;
+}
+
+[data-wm-plugin="horizontal-timeline"][data-wm-arrow-placement="side"] .wm-timeline-arrow {
+  pointer-events: auto;
+}
+
+[data-wm-plugin="horizontal-timeline"][data-wm-arrow-placement="side"] .wm-timeline-arrow--prev {
+  margin-left: var(--timeline-arrow-side-offset, 1rem);
+}
+
+[data-wm-plugin="horizontal-timeline"][data-wm-arrow-placement="side"] .wm-timeline-arrow--next {
+  margin-right: var(--timeline-arrow-side-offset, 1rem);
+}
+
 
 /* Synchronized transitions */
 [data-wm-plugin="horizontal-timeline"][data-wm-navigation-type="arrows"] .wm-timeline-items-track {
@@ -622,6 +660,60 @@ body.sqs-edit-mode-active [data-wm-plugin="horizontal-timeline"] .wm-timeline-sc
 
   [data-wm-plugin="horizontal-timeline"][data-wm-mobile-layout="vertical"] .wm-timeline-arrows {
     display: none;
+  }
+
+  /* ================================
+     ARROW PLACEMENT (MOBILE)
+     ================================ */
+
+  /* Reset to a centred bottom row for any bottom-* mobile placement, overriding
+     whatever desktop placement is set. */
+  [data-wm-plugin="horizontal-timeline"][data-wm-arrow-placement-mobile="bottom"] .wm-timeline-arrows,
+  [data-wm-plugin="horizontal-timeline"][data-wm-arrow-placement-mobile="bottom-left"] .wm-timeline-arrows,
+  [data-wm-plugin="horizontal-timeline"][data-wm-arrow-placement-mobile="bottom-right"] .wm-timeline-arrows {
+    position: static;
+    inset: auto;
+    margin-top: var(--timeline-arrow-margin-top, 2rem);
+    transform: translateX(calc(-0.5 * var(--timeline-content-padding, var(--sqs-site-gutter, 4vw))));
+    align-items: center;
+    pointer-events: auto;
+    z-index: auto;
+  }
+
+  [data-wm-plugin="horizontal-timeline"][data-wm-arrow-placement-mobile="bottom"] .wm-timeline-arrows {
+    justify-content: center;
+  }
+
+  [data-wm-plugin="horizontal-timeline"][data-wm-arrow-placement-mobile="bottom-left"] .wm-timeline-arrows {
+    justify-content: flex-start;
+  }
+
+  [data-wm-plugin="horizontal-timeline"][data-wm-arrow-placement-mobile="bottom-right"] .wm-timeline-arrows {
+    justify-content: flex-end;
+  }
+
+  /* Side placement on mobile */
+  [data-wm-plugin="horizontal-timeline"][data-wm-arrow-placement-mobile="side"] .wm-timeline-arrows {
+    position: absolute;
+    inset: 0;
+    margin-top: 0;
+    transform: none;
+    justify-content: space-between;
+    align-items: center;
+    pointer-events: none;
+    z-index: 3;
+  }
+
+  [data-wm-plugin="horizontal-timeline"][data-wm-arrow-placement-mobile="side"] .wm-timeline-arrow {
+    pointer-events: auto;
+  }
+
+  [data-wm-plugin="horizontal-timeline"][data-wm-arrow-placement-mobile="side"] .wm-timeline-arrow--prev {
+    margin-left: var(--timeline-arrow-side-offset-mobile, 0.5rem);
+  }
+
+  [data-wm-plugin="horizontal-timeline"][data-wm-arrow-placement-mobile="side"] .wm-timeline-arrow--next {
+    margin-right: var(--timeline-arrow-side-offset-mobile, 0.5rem);
   }
 }
 
