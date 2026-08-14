@@ -66,10 +66,7 @@
  * Section Title:
  * --timeline-section-title-color: var(--headingLargeColor);
  * --timeline-section-title-size: inherit;
- * 
- * Animation:
- * --timeline-transition-duration: 0.1s;
- * 
+ *
  * Arrow Navigation:
  * --timeline-arrow-size: 48px;
  * --timeline-arrow-icon-size: 24px;
@@ -182,7 +179,6 @@ body.sqs-edit-mode-active [data-wm-plugin="horizontal-timeline"] .wm-timeline-sc
 [data-wm-plugin="horizontal-timeline"] .wm-timeline-labels-track {
   display: flex;
   gap: var(--timeline-item-spacing, 120px);
-  transition: transform var(--timeline-transition-duration, 0.1s) ease-out;
   will-change: transform;
 }
 
@@ -222,7 +218,6 @@ body.sqs-edit-mode-active [data-wm-plugin="horizontal-timeline"] .wm-timeline-sc
   border-radius: var(--timeline-track-border-radius, 22px);
   overflow: hidden;
   z-index: 1;
-  transition: transform var(--timeline-transition-duration, 0.1s) ease-out;
   will-change: transform;
 }
 
@@ -237,10 +232,77 @@ body.sqs-edit-mode-active [data-wm-plugin="horizontal-timeline"] .wm-timeline-sc
 
 [data-wm-plugin="horizontal-timeline"] .wm-timeline-progress-fill {
   height: 100%;
-  width: 0%;
+  /* Full width, revealed with scaleX. Animating `width` is a layout+paint on
+     every scroll frame; a transform stays on the compositor. */
+  width: 100%;
+  transform: scaleX(0);
+  transform-origin: left center;
   background: var(--timeline-fill-bg, var(--primaryButtonBackgroundColor, #000));
   border-radius: var(--timeline-track-border-radius, 22px);
-  transition: width var(--timeline-transition-duration, 0.1s) ease-out;
+  will-change: transform;
+}
+
+/* The tracks carry no transition of their own. In scroll mode they are
+   positioned directly from the scroll position every frame, so a transition
+   would only restart itself each frame — lag and main-thread work for no
+   smoothing. Arrow mode adds its own transitions further down: there the
+   transition *is* the animation. */
+
+/* Where the browser supports scroll-driven animations (Safari 26+, Chrome 115+),
+   hand the whole carousel to the compositor instead of translating it from a
+   scroll handler. This matters more here than for a normal scroll effect: the
+   section is pinned, so when Safari stops running JS during momentum scrolling
+   the background stays put while the carousel freezes and then jumps.
+
+   The plugin's own maths reduce to: progress 0 when the spacer's top reaches the
+   top of the viewport, progress 1 when its bottom reaches one pinned-content
+   height below that. Insetting the timeline's scrollport to that content height
+   makes `contain` cover exactly that span, so CSS and the JS fallback agree.
+   JS supplies both measurements as custom properties. */
+@supports (animation-timeline: view()) {
+  [data-wm-plugin="horizontal-timeline"][data-wm-navigation-type="scroll"] .wm-timeline-scroll-spacer {
+    view-timeline-name: --wm-timeline-scroll;
+    view-timeline-inset: 0px calc(100% - var(--wm-timeline-content-height, 100vh));
+  }
+
+  [data-wm-plugin="horizontal-timeline"][data-wm-navigation-type="scroll"] .wm-timeline-items-track,
+  [data-wm-plugin="horizontal-timeline"][data-wm-navigation-type="scroll"] .wm-timeline-labels-track,
+  [data-wm-plugin="horizontal-timeline"][data-wm-navigation-type="scroll"] .wm-timeline-progress-track,
+  [data-wm-plugin="horizontal-timeline"][data-wm-navigation-type="scroll"] .wm-timeline-progress-fill {
+    animation-duration: auto;
+    animation-timing-function: linear;
+    animation-fill-mode: both;
+    animation-timeline: --wm-timeline-scroll;
+    animation-range: contain;
+  }
+
+  [data-wm-plugin="horizontal-timeline"][data-wm-navigation-type="scroll"] .wm-timeline-items-track,
+  [data-wm-plugin="horizontal-timeline"][data-wm-navigation-type="scroll"] .wm-timeline-labels-track,
+  [data-wm-plugin="horizontal-timeline"][data-wm-navigation-type="scroll"] .wm-timeline-progress-track {
+    animation-name: wm-timeline-slide;
+  }
+
+  [data-wm-plugin="horizontal-timeline"][data-wm-navigation-type="scroll"] .wm-timeline-progress-fill {
+    animation-name: wm-timeline-fill;
+  }
+
+  /* JS found the timeline never activated and took the tracks back over. */
+  [data-wm-plugin="horizontal-timeline"][data-wm-navigation-type="scroll"][data-wm-js-driven] .wm-timeline-items-track,
+  [data-wm-plugin="horizontal-timeline"][data-wm-navigation-type="scroll"][data-wm-js-driven] .wm-timeline-labels-track,
+  [data-wm-plugin="horizontal-timeline"][data-wm-navigation-type="scroll"][data-wm-js-driven] .wm-timeline-progress-track,
+  [data-wm-plugin="horizontal-timeline"][data-wm-navigation-type="scroll"][data-wm-js-driven] .wm-timeline-progress-fill {
+    animation-name: none;
+  }
+
+  @keyframes wm-timeline-slide {
+    from { transform: translateX(0); }
+    to { transform: translateX(calc(-1 * var(--wm-timeline-max-translate, 0px))); }
+  }
+
+  @keyframes wm-timeline-fill {
+    from { transform: scaleX(0); }
+    to { transform: scaleX(1); }
+  }
 }
 
 /* ================================
@@ -295,7 +357,6 @@ body.sqs-edit-mode-active [data-wm-plugin="horizontal-timeline"] .wm-timeline-sc
 [data-wm-plugin="horizontal-timeline"] .wm-timeline-items-track {
   display: flex;
   gap: var(--timeline-item-spacing, 120px);
-  transition: transform var(--timeline-transition-duration, 0.1s) ease-out;
   will-change: transform;
 }
 
@@ -523,7 +584,7 @@ body.sqs-edit-mode-active [data-wm-plugin="horizontal-timeline"] .wm-timeline-sc
 }
 
 [data-wm-plugin="horizontal-timeline"][data-wm-navigation-type="arrows"] .wm-timeline-progress-fill {
-  transition: width var(--timeline-arrow-duration, 0.4s) ease;
+  transition: transform var(--timeline-arrow-duration, 0.4s) ease;
 }
 
 /* ================================
@@ -577,6 +638,20 @@ body.sqs-edit-mode-active [data-wm-plugin="horizontal-timeline"] .wm-timeline-sc
     height: auto !important;
   }
 
+  /* The vertical layout is in normal flow with its own geometry, so it opts out
+     of the horizontal layout's scroll timeline. The extra attribute keeps this
+     more specific than the block that switches the timeline on. */
+  [data-wm-plugin="horizontal-timeline"][data-wm-navigation-type="scroll"][data-wm-mobile-layout="vertical"] .wm-timeline-scroll-spacer {
+    view-timeline-name: none;
+  }
+
+  [data-wm-plugin="horizontal-timeline"][data-wm-navigation-type="scroll"][data-wm-mobile-layout="vertical"] .wm-timeline-items-track,
+  [data-wm-plugin="horizontal-timeline"][data-wm-navigation-type="scroll"][data-wm-mobile-layout="vertical"] .wm-timeline-labels-track,
+  [data-wm-plugin="horizontal-timeline"][data-wm-navigation-type="scroll"][data-wm-mobile-layout="vertical"] .wm-timeline-progress-track,
+  [data-wm-plugin="horizontal-timeline"][data-wm-navigation-type="scroll"][data-wm-mobile-layout="vertical"] .wm-timeline-progress-fill {
+    animation-name: none;
+  }
+
   [data-wm-plugin="horizontal-timeline"][data-wm-mobile-layout="vertical"] .wm-timeline-sticky-wrapper {
     position: relative;
     min-height: auto;
@@ -613,8 +688,12 @@ body.sqs-edit-mode-active [data-wm-plugin="horizontal-timeline"] .wm-timeline-sc
 
   [data-wm-plugin="horizontal-timeline"][data-wm-mobile-layout="vertical"] .wm-timeline-progress-fill {
     width: 100%;
-    height: 0%;
-    transition: height 0.15s ease-out;
+    height: 100%;
+    /* Vertical counterpart of the horizontal fill: full height, revealed with
+       scaleY so the growth stays on the compositor. */
+    transform: scaleY(0);
+    transform-origin: top center;
+    transition: none;
   }
 
   [data-wm-plugin="horizontal-timeline"][data-wm-mobile-layout="vertical"] .wm-timeline-items-container {

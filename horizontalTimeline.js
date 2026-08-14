@@ -11,6 +11,13 @@ class WMHorizontalTimeline {
     elem.dispatchEvent(new CustomEvent(`wm-${this.pluginName}${type}`, { detail, bubbles: true }));
   }
 
+  // Frames the scroll loop keeps running after the page stops moving.
+  static idleFrameLimit = 12;
+
+  // Height change (px) below which a touch-device resize is treated as the
+  // browser UI collapsing rather than a real viewport change.
+  static browserChromeHeightThreshold = 200;
+
   constructor(el, settings = {}) {
     this.el = el;
     this.settings = {
@@ -35,9 +42,32 @@ class WMHorizontalTimeline {
     this.itemsTrack = null;
     this.dots = [];
     this.scrollHeight = 0;
+    this.metrics = null;
+    this.needsMeasure = true;
+    this.lastProgress = null;
+    this.filledCount = -1;
+    this.viewportHeight = window.innerHeight;
+    this.lastViewportWidth = window.innerWidth;
+    this.lastScrollY = null;
+    this.idleFrames = 0;
+    this.rafId = null;
+    this.isVisible = true;
+    this.isTouch = window.matchMedia ? window.matchMedia('(hover: none)').matches : false;
+    // When the browser can run the slide and fill off a scroll timeline (see the
+    // @supports block in the CSS), the compositor owns them and JS only has to
+    // keep the dot states in sync. Scroll mode with a horizontal layout only —
+    // arrow mode animates on click and vertical mobile has its own geometry.
+    this.hasScrollTimeline = typeof CSS !== 'undefined'
+      && typeof CSS.supports === 'function'
+      && CSS.supports('animation-timeline', 'view()')
+      && this.settings.navigationType !== 'arrows';
+    this.scrollTimelineChecked = false;
+    this.boundTick = null;
     this.boundHandleScroll = null;
     this.boundHandleResize = null;
+    this.boundHandleRemeasure = null;
     this.resizeObserver = null;
+    this.intersectionObserver = null;
     // Arrow navigation
     this.currentIndex = 0;
     this.prevButton = null;
@@ -435,109 +465,198 @@ class WMHorizontalTimeline {
     scrollSpacer.style.height = `${this.scrollHeight}px`;
   }
 
-  updateTimeline() {
+  isVerticalLayout() {
+    return window.innerWidth <= 767 && this.settings.mobileLayout === 'vertical';
+  }
+
+  /**
+   * Collect every geometry value the scroll loop needs in one batch, then do the
+   * layout-affecting writes once. Everything in here used to run per scroll
+   * frame — including a getComputedStyle call and an offsetLeft read per dot —
+   * which forced a synchronous layout of the pinned section many times a frame.
+   */
+  measure() {
+    this.needsMeasure = false;
+    this.metrics = null;
+
     const scrollSpacer = this.el.querySelector('.wm-timeline-scroll-spacer');
-    if (!scrollSpacer || !this.itemsTrack || !this.progressFill) return;
+    const progressTrack = this.el.querySelector('.wm-timeline-progress-track');
+    if (!scrollSpacer || !progressTrack || !this.itemsTrack || !this.progressFill) return;
 
-    const isMobile = window.innerWidth <= 767;
-    const isVertical = isMobile && this.settings.mobileLayout === 'vertical';
-
-    if (isVertical) {
+    if (this.isVerticalLayout()) {
       const timelineArea = this.el.querySelector('.wm-timeline-area');
       if (!timelineArea) return;
-      
-      const areaRect = timelineArea.getBoundingClientRect();
-      const viewportHeight = window.innerHeight;
-      const threshold = viewportHeight * 0.3;
-      
-      const scrollStart = threshold - areaRect.top;
-      const scrollRange = areaRect.height - threshold;
-      
-      let progress = Math.max(0, Math.min(1, scrollStart / scrollRange));
 
-      this.progressFill.style.height = `${progress * 100}%`;
-      this.progressFill.style.width = '100%';
+      // Read phase.
+      const areaHeight = timelineArea.getBoundingClientRect().height;
+      const trackRect = progressTrack.getBoundingClientRect();
+      const trackTop = trackRect.top;
+      const trackHeight = trackRect.height;
+      // Dot centres as offsets down the track, which stay fixed as the page
+      // scrolls because the dots and the track move together.
+      const dotCentres = this.dots.map(dot => {
+        const rect = dot.getBoundingClientRect();
+        return rect.top - trackTop + (rect.height / 2);
+      });
 
-      const progressTrack = this.el.querySelector('.wm-timeline-progress-track');
-      if (progressTrack) {
-        const trackRect = progressTrack.getBoundingClientRect();
-        const progressFillBottom = trackRect.top + (progress * trackRect.height);
+      this.metrics = { vertical: true, areaHeight, trackHeight, dotCentres, timelineArea };
+      return;
+    }
 
-        this.dots.forEach((dot) => {
-          const dotRect = dot.getBoundingClientRect();
-          const dotCenter = dotRect.top + (dotRect.height / 2);
-          
-          if (progressFillBottom >= dotCenter) {
-            dot.classList.add('wm-timeline-dot--filled');
-          } else {
-            dot.classList.remove('wm-timeline-dot--filled');
-          }
-        });
+    const itemsContainer = this.el.querySelector('.wm-timeline-items-container');
+    const timelineContent = this.el.querySelector('.wm-timeline-content');
+    const stickyWrapper = this.el.querySelector('.wm-timeline-sticky-wrapper');
+    if (!itemsContainer) return;
+
+    // Read phase — batch every layout read before writing anything.
+    const containerWidth = itemsContainer.offsetWidth;
+    const trackWidth = this.itemsTrack.scrollWidth;
+    const contentPadding = timelineContent
+      ? parseFloat(getComputedStyle(timelineContent).paddingLeft) || 0
+      : 0;
+    const contentHeight = stickyWrapper ? stickyWrapper.offsetHeight : this.viewportHeight;
+    const dotCentres = this.dots.map(dot => {
+      const item = dot.closest('.wm-timeline-item');
+      return item ? item.offsetLeft + (item.offsetWidth / 2) : 0;
+    });
+
+    const maxTranslate = Math.max(0, trackWidth - containerWidth + contentPadding);
+    const scrollRange = this.scrollHeight - contentHeight;
+
+    // Write phase.
+    progressTrack.style.width = `${trackWidth}px`;
+    // Feeds the CSS scroll timeline: the slide distance, and the height of the
+    // pinned content, which is what the timeline's range is inset to.
+    this.el.style.setProperty('--wm-timeline-max-translate', `${maxTranslate}px`);
+    this.el.style.setProperty('--wm-timeline-content-height', `${contentHeight}px`);
+
+    this.metrics = {
+      vertical: false,
+      trackWidth,
+      maxTranslate,
+      scrollRange,
+      dotCentres,
+      scrollSpacer,
+      progressTrack
+    };
+  }
+
+  /**
+   * The CSS scroll timeline is only worth deferring to if the browser actually
+   * resolved it. If it reports no current time the carousel would sit frozen at
+   * its start, so fall back to driving the transforms from here.
+   */
+  verifyScrollTimeline() {
+    if (this.scrollTimelineChecked) return;
+    if (!this.itemsTrack || typeof this.itemsTrack.getAnimations !== 'function') {
+      this.hasScrollTimeline = false;
+      this.scrollTimelineChecked = true;
+      return;
+    }
+
+    const isDriven = this.itemsTrack.getAnimations().some(animation => (
+      animation.timeline
+      && animation.timeline !== document.timeline
+      && animation.timeline.currentTime !== null
+    ));
+
+    this.scrollTimelineChecked = true;
+    if (!isDriven) {
+      this.hasScrollTimeline = false;
+      this.lastProgress = null;
+      // Switches the CSS back to the transition-based tracks this class drives.
+      this.el.setAttribute('data-wm-js-driven', 'true');
+    }
+  }
+
+  updateTimeline() {
+    if (this.hasScrollTimeline && !this.isVerticalLayout()) this.verifyScrollTimeline();
+    if (this.needsMeasure) this.measure();
+
+    const metrics = this.metrics;
+    if (!metrics) return;
+
+    if (metrics.vertical) {
+      // The only layout read in the scroll path.
+      const areaTop = metrics.timelineArea.getBoundingClientRect().top;
+      const threshold = this.viewportHeight * 0.3;
+      const scrollRange = metrics.areaHeight - threshold;
+      const progress = scrollRange > 0
+        ? Math.max(0, Math.min(1, (threshold - areaTop) / scrollRange))
+        : 0;
+
+      if (progress !== this.lastProgress) {
+        this.lastProgress = progress;
+        this.progressFill.style.transform = `scaleY(${progress})`;
       }
+
+      this.setFilledDots(metrics.dotCentres, progress * metrics.trackHeight);
+      return;
+    }
+
+    // The only layout read in the scroll path.
+    const spacerTop = metrics.scrollSpacer.getBoundingClientRect().top;
+    const progress = metrics.scrollRange > 0
+      ? Math.max(0, Math.min(1, -spacerTop / metrics.scrollRange))
+      : 0;
+
+    if (progress !== this.lastProgress) {
+      this.lastProgress = progress;
+
+      if (!this.hasScrollTimeline) {
+        const translate = `translateX(-${progress * metrics.maxTranslate}px)`;
+        this.itemsTrack.style.transform = translate;
+        if (this.labelsTrack) this.labelsTrack.style.transform = translate;
+        metrics.progressTrack.style.transform = translate;
+        this.progressFill.style.transform = `scaleX(${progress})`;
+      }
+    }
+
+    this.setFilledDots(metrics.dotCentres, progress * metrics.trackWidth);
+  }
+
+  /**
+   * Dot centres ascend along the track, so the filled state is just a count.
+   * Only touch the DOM when that count actually changes.
+   */
+  setFilledDots(centres, filledExtent) {
+    let count = 0;
+    while (count < centres.length && filledExtent >= centres[count]) count += 1;
+    if (count === this.filledCount) return;
+
+    this.filledCount = count;
+    this.dots.forEach((dot, index) => {
+      dot.classList.toggle('wm-timeline-dot--filled', index < count);
+    });
+  }
+
+  /**
+   * Keep a short-lived rAF loop running while the page moves. Mobile Safari
+   * delivers scroll events unevenly during momentum scrolling, so updating
+   * straight off the event makes a pinned carousel freeze and jump; a frame loop
+   * that idles out after the scroll settles keeps it on the display refresh.
+   */
+  requestTick() {
+    if (this.rafId !== null) return;
+    this.idleFrames = 0;
+    this.rafId = requestAnimationFrame(this.boundTick);
+  }
+
+  tick() {
+    this.rafId = null;
+
+    const scrollY = window.scrollY;
+    if (scrollY === this.lastScrollY) {
+      this.idleFrames += 1;
     } else {
-      const rect = scrollSpacer.getBoundingClientRect();
-      const viewportHeight = window.innerHeight;
-      const stickyWrapper = this.el.querySelector('.wm-timeline-sticky-wrapper');
-      const contentHeight = stickyWrapper ? stickyWrapper.offsetHeight : viewportHeight;
+      this.lastScrollY = scrollY;
+      this.idleFrames = 0;
+    }
 
-      const scrollStart = -rect.top;
-      const scrollRange = this.scrollHeight - contentHeight;
+    this.updateTimeline();
 
-      let progress = Math.max(0, Math.min(1, scrollStart / scrollRange));
-
-      this.progressFill.style.width = `${progress * 100}%`;
-      this.progressFill.style.height = '100%';
-
-      const itemsContainer = this.el.querySelector('.wm-timeline-items-container');
-      const progressTrack = this.el.querySelector('.wm-timeline-progress-track');
-      const timelineContent = this.el.querySelector('.wm-timeline-content');
-      
-      if (itemsContainer && this.itemsTrack) {
-        const containerWidth = itemsContainer.offsetWidth;
-        const trackWidth = this.itemsTrack.scrollWidth;
-        
-        // Get the content padding to inset the end position
-        const contentPadding = timelineContent 
-          ? parseFloat(getComputedStyle(timelineContent).paddingLeft) || 0 
-          : 0;
-        
-        const maxTranslate = Math.max(0, trackWidth - containerWidth + contentPadding);
-        const translateX = progress * maxTranslate;
-        this.itemsTrack.style.transform = `translateX(-${translateX}px)`;
-        
-        if (this.labelsTrack) {
-          this.labelsTrack.style.transform = `translateX(-${translateX}px)`;
-        }
-        
-        // Sync progress track with items track
-        if (progressTrack) {
-          progressTrack.style.width = `${trackWidth}px`;
-          progressTrack.style.transform = `translateX(-${translateX}px)`;
-        }
-      }
-
-      // Fill dots based on progress - calculate actual dot positions relative to track
-      if (this.itemsTrack) {
-        const trackWidth = this.itemsTrack.scrollWidth;
-        const progressFillWidth = progress * trackWidth;
-        
-        this.dots.forEach((dot) => {
-          // Get the dot's center position within the items track
-          const item = dot.closest('.wm-timeline-item');
-          if (item) {
-            const itemLeft = item.offsetLeft;
-            const itemWidth = item.offsetWidth;
-            // Dot is centered in the item
-            const dotCenter = itemLeft + (itemWidth / 2);
-            
-            if (progressFillWidth >= dotCenter) {
-              dot.classList.add('wm-timeline-dot--filled');
-            } else {
-              dot.classList.remove('wm-timeline-dot--filled');
-            }
-          }
-        });
-      }
+    if (this.isVisible && this.idleFrames < WMHorizontalTimeline.idleFrameLimit) {
+      this.rafId = requestAnimationFrame(this.boundTick);
     }
   }
 
@@ -592,11 +711,12 @@ class WMHorizontalTimeline {
           fillPercent = (dotCenter / trackScrollWidth) * 100;
         }
         
-        this.progressFill.style.width = `${fillPercent}%`;
+        this.progressFill.style.transform = `scaleX(${fillPercent / 100})`;
       }
     }
-    
+
     // Update dots based on current index
+    this.filledCount = this.currentIndex + 1;
     this.dots.forEach((dot, i) => {
       dot.classList.toggle('wm-timeline-dot--filled', i <= this.currentIndex);
     });
@@ -756,8 +876,10 @@ class WMHorizontalTimeline {
           const currentIsVertical = currentIsMobile && this.settings.mobileLayout === 'vertical';
           
           this.calculateDimensions();
-          
+          this.needsMeasure = true;
+
           if (currentIsVertical) {
+            this.viewportHeight = window.innerHeight;
             this.updateTimeline();
           } else {
             this.goToIndex(this.currentIndex);
@@ -768,20 +890,9 @@ class WMHorizontalTimeline {
       
       // Also need scroll handler for vertical mobile layout
       if (this.settings.mobileLayout === 'vertical') {
-        let ticking = false;
+        this.boundTick = () => this.tick();
         this.boundHandleScroll = () => {
-          if (!ticking) {
-            requestAnimationFrame(() => {
-              const currentIsMobile = window.innerWidth <= 767;
-              const currentIsVertical = currentIsMobile && this.settings.mobileLayout === 'vertical';
-              
-              if (currentIsVertical) {
-                this.updateTimeline();
-              }
-              ticking = false;
-            });
-            ticking = true;
-          }
+          if (this.isVerticalLayout()) this.requestTick();
         };
         window.addEventListener('scroll', this.boundHandleScroll, { passive: true });
       }
@@ -789,61 +900,93 @@ class WMHorizontalTimeline {
     }
 
     // Scroll navigation mode (default) - works on all layouts
-    let ticking = false;
-    this.boundHandleScroll = () => {
-      if (!ticking) {
-        requestAnimationFrame(() => {
-          this.updateTimeline();
-          ticking = false;
-        });
-        ticking = true;
-      }
+    this.boundTick = () => this.tick();
+    this.boundHandleScroll = () => this.requestTick();
+    this.boundHandleRemeasure = () => {
+      this.calculateDimensions();
+      this.needsMeasure = true;
+      this.requestTick();
     };
 
     // Debounced resize handler
     let resizeTimeout;
     this.boundHandleResize = () => {
+      const width = window.innerWidth;
+      const height = window.innerHeight;
+      const widthChanged = width !== this.lastViewportWidth;
+
+      // Mobile Safari fires resize as the URL bar collapses and expands during a
+      // scroll. Adopting that height moves the vertical layout's trigger line
+      // mid-scroll and makes the progress jump, so keep the cached height for
+      // small height-only changes.
+      const isBrowserChrome = this.isTouch
+        && !widthChanged
+        && Math.abs(height - this.viewportHeight) < WMHorizontalTimeline.browserChromeHeightThreshold;
+
+      this.lastViewportWidth = width;
+      if (!isBrowserChrome) this.viewportHeight = height;
+
       clearTimeout(resizeTimeout);
-      resizeTimeout = setTimeout(() => {
-        this.calculateDimensions();
-        this.updateTimeline();
-      }, 100);
+      resizeTimeout = setTimeout(this.boundHandleRemeasure, 100);
     };
 
     window.addEventListener('scroll', this.boundHandleScroll, { passive: true });
     window.addEventListener('resize', this.boundHandleResize, { passive: true });
+    window.addEventListener('orientationchange', this.boundHandleRemeasure);
+    window.addEventListener('load', this.boundHandleRemeasure);
+    // Late-loading webfonts and lazy images change item widths.
+    document.fonts?.ready.then(this.boundHandleRemeasure).catch(() => {});
 
     // Also observe for size changes
     if (typeof ResizeObserver !== 'undefined') {
-      this.resizeObserver = new ResizeObserver(() => {
-        this.calculateDimensions();
-        this.updateTimeline();
-      });
+      this.resizeObserver = new ResizeObserver(this.boundHandleRemeasure);
       const itemsTrack = this.el.querySelector('.wm-timeline-items-track');
       if (itemsTrack) {
         this.resizeObserver.observe(itemsTrack);
       }
     }
 
+    const scrollSpacer = this.el.querySelector('.wm-timeline-scroll-spacer');
+    if (typeof IntersectionObserver !== 'undefined' && scrollSpacer) {
+      this.intersectionObserver = new IntersectionObserver(entries => {
+        this.isVisible = entries.some(entry => entry.isIntersecting);
+        if (this.isVisible) this.requestTick();
+      }, { rootMargin: '20% 0px' });
+      this.intersectionObserver.observe(scrollSpacer);
+    }
+
     // Initial update
     requestAnimationFrame(() => {
+      this.needsMeasure = true;
       this.updateTimeline();
     });
   }
 
   destroy() {
     // Remove event listeners
+    if (this.rafId !== null) {
+      cancelAnimationFrame(this.rafId);
+      this.rafId = null;
+    }
     if (this.boundHandleScroll) {
       window.removeEventListener('scroll', this.boundHandleScroll);
     }
     if (this.boundHandleResize) {
       window.removeEventListener('resize', this.boundHandleResize);
     }
+    if (this.boundHandleRemeasure) {
+      window.removeEventListener('orientationchange', this.boundHandleRemeasure);
+      window.removeEventListener('load', this.boundHandleRemeasure);
+    }
     if (this.boundHandleFocusIn) {
       this.el.removeEventListener('focusin', this.boundHandleFocusIn);
     }
     if (this.resizeObserver) {
       this.resizeObserver.disconnect();
+    }
+    if (this.intersectionObserver) {
+      this.intersectionObserver.disconnect();
+      this.intersectionObserver = null;
     }
 
     // Remove custom content
@@ -860,12 +1003,19 @@ class WMHorizontalTimeline {
 
     // Remove data attribute
     this.el.removeAttribute('data-wm-plugin');
+    this.el.removeAttribute('data-wm-js-driven');
+    this.el.style.removeProperty('--wm-timeline-max-translate');
+    this.el.style.removeProperty('--wm-timeline-content-height');
 
     // Clear references
     this.timelineWrapper = null;
     this.progressFill = null;
     this.itemsTrack = null;
     this.dots = [];
+    this.metrics = null;
+    this.needsMeasure = true;
+    this.lastProgress = null;
+    this.filledCount = -1;
 
     WMHorizontalTimeline.emitEvent(':destroy', { el: this.el }, this.el);
   }
